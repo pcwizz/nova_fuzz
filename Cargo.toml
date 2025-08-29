@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 libc = "0.2.175"
+memmap = "0.7.0"
 nova_vm = "0.3.0"
 
 
