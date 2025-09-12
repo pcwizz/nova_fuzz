@@ -38,19 +38,19 @@ fn initialize_global_object_with_fuzzilli(agent: &mut Agent, global: Object, mut
     ) -> JsResult<'gc, Value<'gc>> {
         let args = args.bind(gc.nogc());
         let Value::String(cmd) = args.get(0) else {
-            panic!("Fist arg must be a string");
+            panic!("first arg must be a string");
         };
         let cmd = cmd.as_str(agent).expect("first arg not a str");
         match cmd {
             "FUZZILLI_PRINT" => JsResult::Ok(Value::Null),
-            "FUZZILI_CRASH" => {
+            "FUZZILLI_CRASH" => {
                 let Value::Integer(arg) = args.get(1) else {
                     panic!("second fuzzilli crash arg is an int")
                 };
                 let arg = arg.into_i64();
                 panic!("{}", arg)
             }
-            _ => JsResult::Err(JsError::default()),
+            _ => panic!("unknown command"),
         }
     }
 
