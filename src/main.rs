@@ -5,7 +5,7 @@ use nova_vm::{
         builtins::{ArgumentsList, Behaviour, BuiltinFunctionArgs, create_builtin_function},
         execution::{
             Agent, DefaultHostHooks, JsResult,
-            agent::{GcAgent, JsError, Options},
+            agent::{ExceptionType, GcAgent, JsError, Options},
         },
         types::{
             InternalMethods, IntoValue, Object, PropertyDescriptor, PropertyKey,
@@ -48,7 +48,16 @@ fn initialize_global_object_with_fuzzilli(agent: &mut Agent, global: Object, mut
                     panic!("second fuzzilli crash arg is an int")
                 };
                 let arg = arg.into_i64();
-                panic!("{}", arg)
+                JsResult::Err(agent.throw_exception_with_static_message(
+                    match arg {
+                        0 => ExceptionType::AggregateError,
+                        1 => ExceptionType::EvalError,
+                        2 => ExceptionType::RangeError,
+                        _ => ExceptionType::Error,
+                    },
+                    "FUZZILI_CRASH",
+                    gc.into_nogc(),
+                ))
             }
             _ => panic!("unknown command"),
         }
