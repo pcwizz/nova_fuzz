@@ -1,13 +1,18 @@
 use memmap::MmapOptions;
 use nova_vm::{
+    SmallInteger,
     ecmascript::{
+        builtins::{ArgumentsList, Behaviour, BuiltinFunctionArgs, create_builtin_function},
         execution::{
-            DefaultHostHooks,
-            agent::{GcAgent, Options},
+            Agent, DefaultHostHooks, JsResult,
+            agent::{GcAgent, JsError, Options},
         },
-        types::{String as JsString, Value},
+        types::{
+            InternalMethods, IntoValue, Object, PropertyDescriptor, PropertyKey,
+            String as JsString, Value,
+        },
     },
-    engine::context::Bindable,
+    engine::context::{Bindable, GcScope},
 };
 use std::{
     fs::File,
@@ -22,6 +27,56 @@ const REPRL_DWFD: i32 = 103;
 
 unsafe extern "C" {
     fn __sanitizer_cov_reset_edgeguards();
+}
+
+fn initialize_global_object_with_fuzzilli(agent: &mut Agent, global: Object, mut gc: GcScope) {
+    fn fuzzilli<'gc>(
+        agent: &mut Agent,
+        _: Value,
+        args: ArgumentsList,
+        gc: GcScope<'gc, '_>,
+    ) -> JsResult<'gc, Value<'gc>> {
+        let args = args.bind(gc.nogc());
+        let Value::String(cmd) = args.get(0) else {
+            panic!("Fist arg must be a string");
+        };
+        let cmd = cmd.as_str(agent).expect("first arg not a str");
+        match cmd {
+            "FUZZILLI_PRINT" => JsResult::Ok(Value::Null),
+            "FUZZILI_CRASH" => {
+                let Value::Integer(arg) = args.get(1) else {
+                    panic!("second fuzzilli crash arg is an int")
+                };
+                let arg = arg.into_i64();
+                panic!("{}", arg)
+            }
+            _ => JsResult::Err(JsError::default()),
+        }
+    }
+
+    let function = create_builtin_function(
+        agent,
+        Behaviour::Regular(fuzzilli),
+        BuiltinFunctionArgs::new(2, "fuzzilli"),
+        gc.nogc(),
+    );
+
+    let property_key = PropertyKey::from_static_str(agent, "fuzzilli", gc.nogc());
+
+    global
+        .internal_define_own_property(
+            agent,
+            property_key.unbind(),
+            PropertyDescriptor {
+                value: Some(function.into_value().unbind()),
+                writable: Some(true),
+                enumerable: Some(false),
+                configurable: Some(true),
+                ..Default::default()
+            },
+            gc.reborrow(),
+        )
+        .unwrap();
 }
 
 fn main() {
@@ -70,8 +125,19 @@ fn main() {
             },
             &DefaultHostHooks,
         );
-        let realm = agent.create_default_realm();
 
+        let create_global_object: Option<for<'a> fn(&mut Agent, GcScope<'a, '_>) -> Object<'a>> =
+            None;
+        let create_global_this_value: Option<
+            for<'a> fn(&mut Agent, GcScope<'a, '_>) -> Object<'a>,
+        > = None;
+        let initialize_global: Option<fn(&mut Agent, Object, GcScope)> =
+            Some(initialize_global_object_with_fuzzilli);
+        let realm = agent.create_realm(
+            create_global_object,
+            create_global_this_value,
+            initialize_global,
+        );
         agent.run_in_realm(&realm, |agent, mut gc| {
             let source_text = JsString::from_string(agent, script, gc.nogc());
             let result = agent.run_script(source_text.unbind(), gc.reborrow());
