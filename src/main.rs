@@ -42,15 +42,26 @@ fn initialize_global_object_with_fuzzilli(agent: &mut Agent, global: Object, mut
         let cmd = cmd.as_str(agent).expect("first arg not a str");
         match cmd {
             "FUZZILLI_PRINT" => {
-                let mut dw_file = unsafe { File::from_raw_fd(REPRL_DWFD) };
-                let Value::String(str) = args.get(1) else {
-                    panic!("second arg must be a string")
+                fn write_dw(str: &str) {
+                    let mut dw_file = unsafe { File::from_raw_fd(REPRL_DWFD) };
+                    let buf = str.as_bytes();
+                    dw_file
+                        .write(buf)
+                        .expect("can't write out put FUZZILLI_PRINT");
+                    dw_file.flush().expect("can't flush output FUZZILLI_PRINT");
+                }
+                match args.get(1) {
+                    Value::String(s) => {
+                        let str = s.as_str(&agent).expect("msg");
+                        write_dw(str);
+                    }
+                    Value::SmallString(s) => {
+                        let str = s.as_str().expect("msg");
+                        write_dw(str);
+                    }
+                    _ => panic!("second arg must be a string got {:?}", args.get(1)),
                 };
-                let buf = str.as_str(agent).expect("print argument empty").as_bytes();
-                dw_file
-                    .write(buf)
-                    .expect("can't write out put FUZZILLI_PRINT");
-                dw_file.flush().expect("can't flush output FUZZILLI_PRINT");
+
                 JsResult::Ok(Value::Null)
             }
             "FUZZILLI_CRASH" => {
