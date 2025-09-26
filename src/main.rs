@@ -1,11 +1,10 @@
 use memmap::MmapOptions;
 use nova_vm::{
-    SmallInteger,
     ecmascript::{
         builtins::{ArgumentsList, Behaviour, BuiltinFunctionArgs, create_builtin_function},
         execution::{
             Agent, DefaultHostHooks, JsResult,
-            agent::{ExceptionType, GcAgent, JsError, Options},
+            agent::{GcAgent, Options},
         },
         types::{
             InternalMethods, IntoValue, Object, PropertyDescriptor, PropertyKey,
@@ -23,7 +22,7 @@ use std::{
 const REPRL_CRFD: i32 = 100;
 const REPRL_CWFD: i32 = 101;
 const REPRL_DRFD: RawFd = 102;
-const REPRL_DWFD: i32 = 103;
+const REPRL_DWFD: RawFd = 103;
 
 unsafe extern "C" {
     fn __sanitizer_cov_reset_edgeguards();
@@ -42,22 +41,33 @@ fn initialize_global_object_with_fuzzilli(agent: &mut Agent, global: Object, mut
         };
         let cmd = cmd.as_str(agent).expect("first arg not a str");
         match cmd {
-            "FUZZILLI_PRINT" => JsResult::Ok(Value::Null),
+            "FUZZILLI_PRINT" => {
+                let mut dw_file = unsafe { File::from_raw_fd(REPRL_DWFD) };
+                let Value::String(str) = args.get(1) else {
+                    panic!("second arg must be a string")
+                };
+                let buf = str.as_str(agent).expect("print argument empty").as_bytes();
+                dw_file
+                    .write(buf)
+                    .expect("can't write out put FUZZILLI_PRINT");
+                dw_file.flush().expect("can't flush output FUZZILLI_PRINT");
+                JsResult::Ok(Value::Null)
+            }
             "FUZZILLI_CRASH" => {
                 let Value::Integer(arg) = args.get(1) else {
                     panic!("second fuzzilli crash arg is an int")
                 };
                 let arg = arg.into_i64();
-                JsResult::Err(agent.throw_exception_with_static_message(
-                    match arg {
-                        0 => ExceptionType::AggregateError,
-                        1 => ExceptionType::EvalError,
-                        2 => ExceptionType::RangeError,
-                        _ => ExceptionType::Error,
+                match arg {
+                    0 => unsafe {
+                        // Explicitly write out of bounds to crash
+                        let ptr = 0x41414141 as *mut usize;
+                        let val = 0x1337 as usize;
+                        std::ptr::write(ptr, val);
+                        JsResult::Ok(Value::Null)
                     },
-                    "FUZZILI_CRASH",
-                    gc.into_nogc(),
-                ))
+                    _ => panic!("{}", arg),
+                }
             }
             _ => panic!("unknown command"),
         }
