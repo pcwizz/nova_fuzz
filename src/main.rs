@@ -52,11 +52,15 @@ fn initialize_global_object_with_fuzzilli(agent: &mut Agent, global: Object, mut
                 }
                 match args.get(1) {
                     Value::String(s) => {
-                        let str = s.as_str(&agent).expect("msg");
+                        let str = s
+                            .as_str(&agent)
+                            .expect("expected second argument to print to be a string");
                         write_dw(str);
                     }
                     Value::SmallString(s) => {
-                        let str = s.as_str().expect("msg");
+                        let str = s
+                            .as_str()
+                            .expect("expected second argument to print to be a string");
                         write_dw(str);
                     }
                     _ => panic!("second arg must be a string got {:?}", args.get(1)),
