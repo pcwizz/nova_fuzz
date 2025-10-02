@@ -24,6 +24,9 @@ const REPRL_CWFD: i32 = 101;
 const REPRL_DRFD: RawFd = 102;
 const REPRL_DWFD: RawFd = 103;
 
+static mut DW_FILE: std::sync::LazyLock<File> =
+    std::sync::LazyLock::new(|| unsafe { File::from_raw_fd(REPRL_DWFD) });
+
 unsafe extern "C" {
     fn __sanitizer_cov_reset_edgeguards();
 }
@@ -43,12 +46,14 @@ fn initialize_global_object_with_fuzzilli(agent: &mut Agent, global: Object, mut
         match cmd {
             "FUZZILLI_PRINT" => {
                 fn write_dw(str: &str) {
-                    let mut dw_file = unsafe { File::from_raw_fd(REPRL_DWFD) };
                     let buf = str.as_bytes();
-                    dw_file
-                        .write(buf)
-                        .expect("can't write out put FUZZILLI_PRINT");
-                    dw_file.flush().expect("can't flush output FUZZILLI_PRINT");
+                    #[allow(static_mut_refs)]
+                    unsafe {
+                        DW_FILE
+                            .write(buf)
+                            .expect("can't write out put FUZZILLI_PRINT");
+                        DW_FILE.flush().expect("can't flush output FUZZILLI_PRINT");
+                    }
                 }
                 match args.get(1) {
                     Value::String(s) => {
